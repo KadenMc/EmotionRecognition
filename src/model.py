@@ -11,6 +11,8 @@ class Model(nn.Module):
         self.net = nn.Sequential(
             # Begin with a convolutional layer
             nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False),
+
+            nn.ReLu(),
             
             # First max pooling layer
             nn.MaxPool2d(2),
