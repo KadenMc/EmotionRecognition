@@ -90,8 +90,17 @@ def main():
     config = load_config(args.config)
 
     # Create the data generator
-    generator = dL.data_generator(config, parallel=(not args.not_parallel), processes=args.processes, data_dir=DATA_PATH)
+    #generator = dL.data_generator(config, parallel=(not args.not_parallel), processes=args.processes, data_dir=DATA_PATH)
 
+    num_outputs = 8
+
+    m = model.Model(num_outputs)
+
+    # Test model with a random input
+    import torch
+    input = torch.randn(1, 1, 32, 32)
+    out = m(input)
+    print(out)
 
 if __name__ == '__main__':
     main()
