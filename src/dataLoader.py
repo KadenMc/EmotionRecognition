@@ -45,25 +45,24 @@ def load_file(file):
 
 
 def numpy_parallel_load(files, processes=4):
-    '''
+    """
     Load data files in parallel.
 
     files: An ordered list of the files to load
     processes: The number of processes
-    '''
+    """
     from multiprocessing import Pool
     p = Pool(processes)
     return p.map(load_file, files)
 
 
 def get_files(path):
-    '''
+    """
     Returns files in a directory.
-    '''
+    """
     for file in os.listdir(path):
         if os.path.isfile(os.path.join(path, file)):
             yield file
-
 
 
 def data_generator(config, parallel=True, processes=4, data_dir=None):

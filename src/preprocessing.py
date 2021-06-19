@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def preprocess(x):
     '''
     Preprocess input x.
