@@ -3,6 +3,8 @@ import argparse
 import yaml
 
 import numpy as np
+import torch
+import torch.nn as nn
 
 import dataLoader as dL
 import visualize as vis
@@ -81,6 +83,13 @@ def load_config(file):
     return default_config
 
 
+def dataloader():
+    # See torch.utils.data.DataLoader as an example
+
+    #X= Variable(torch.from_numpy(X), requires_grad=False)
+    #X= Variable(torch.from_numpy(X).float(), requires_grad=False)
+    pass
+
 def main():
 
     # Parse the arguments
@@ -97,10 +106,44 @@ def main():
     m = model.Model(num_outputs)
 
     # Test model with a random input
-    import torch
-    input = torch.randn(1, 1, 32, 32)
-    out = m(input)
-    print(out)
+    #import torch
+    #input = torch.randn(1, 1, 32, 32)
+    #out = m(input)
+    #print(out)
+
+    # TODO:
+    # Create dataloader
+    # Define device
+    dataloader = None
+    device = None
+
+    # Load from config
+    epochs = 100
+
+    optimizer = torch.optim.Adam(m.parameters(), lr=4e-2, weight_decay=1e-5)
+    loss_fn = nn.CrossEntropyLoss()
+
+    for epoch in range(epochs):
+        avg_cost = 0
+        total_batch = len(dataloader)
+        
+        for x, y in dataloader:
+            x = x.to(device)
+            y = y.to(device)
+
+            # Forward pass
+            y_pred = model(x)
+
+            # Compute loss
+            loss = loss_fn(y_pred, y)
+
+            # Compute gradient/backward pass
+            optimizer.zero_grad()
+            loss.backward()
+
+            # Update parameters
+            optimizer.step()
+
 
 if __name__ == '__main__':
     main()
