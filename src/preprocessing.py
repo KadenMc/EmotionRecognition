@@ -7,4 +7,4 @@ def preprocess(x):
 
     x: Data to process
     """
-    pass
+    return x
