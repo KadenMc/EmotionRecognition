@@ -79,25 +79,23 @@ def main():
 
     # Load the data from CSV (and pickle)
     if args.train.endswith('.csv'):
-        # Load & visualize 
+        # Process CSV
         X, y = dL.load_csv_data(args.train)
-        vis.visualize_image(X[0])
 
-        # Preprocess & visualize
-        X = pre.preprocess(X)
-        vis.visualize_image(X[0])
-
-        # Save (pickle)
+        # Save as pickled data
         with open('../data/Xy.pickle', 'wb') as handle:
             pickle.dump((X,y), handle)
-
     else:
         # Load directly from pickled data
         with open(args.train, 'rb') as handle:
             X, y = pickle.load(handle)
 
-    print(X.shape)
-    print(y.shape)
+
+        # Preprocess & visualize
+        X = pre.preprocess(X)
+        vis.visualize_image(X[0]*255)
+        #vis.visualize_image(X[1])
+        #vis.visualize_image(X[2])
 
     # Load the config
     config = load_config(args.config)

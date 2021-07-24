@@ -20,8 +20,8 @@ def plot_history(hist, loss_name='loss', path=None):
         plt.savefig(path)
 
 def visualize_image(arr):
-    print(arr.shape)
-    cv2.namedWindow('test')
-    cv2.moveWindow('test', 200, 200)
-    cv2.imshow('test', (arr*255).astype(np.uint8))
+    cv2.namedWindow('visualize')
+    cv2.moveWindow('visualize', 200, 200)
+    cv2.resizeWindow("visualize", 500, 500)
+    cv2.imshow('visualize', (cv2.resize(arr, (0,0), fx=3, fy=3)).astype(np.uint8))
     cv2.waitKey(0)
