@@ -37,7 +37,7 @@ def dir_path(path):
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('train', type=path, help='Training data file')
-    parser.add_argument('config', type=file_path, default='config.yaml', \
+    parser.add_argument('--config', type=file_path, default='config.yaml', \
         help='YAML config file specifying data paths, training hyperparameters and prediction settings')
     parser.add_argument('--load_weights', type=file_path, help='Load model weights from file')
     #parser.add_argument('--save_weights', default=os.path.join(MODEL_PATH, 'model.h5'), \
@@ -80,11 +80,27 @@ def main():
     # Load the data from CSV (and pickle)
     if args.train.endswith('.csv'):
         # Process CSV
-        X, y = dL.load_csv_data(args.train)
+        X, y, race = dL.load_csv(args.train)
 
-        # Save as pickled data
+        X = pre.preprocess(X)
+        
+        # Save all data
         with open('../data/Xy.pickle', 'wb') as handle:
-            pickle.dump((X,y), handle)
+                    pickle.dump((X, y), handle)
+        
+        # Save race-specific data
+        race_data = dL.get_races(X, y, race)
+        for key in race_data:
+            if len(race_data[key][0]) != 0:
+                print(key, ":", len(race_data[key][0])/len(X), "%")
+        
+                X_race, y_race = race_data[key]
+                random_inds = np.random.choice(len(X_race), size=12, replace=False)
+                vis.visualize_imgs(X_race[random_inds]*255, 200)#, race=race[random_inds])
+                
+                # Save as pickled data
+                with open('../data/Xy_{}.pickle'.format(key), 'wb') as handle:
+                    pickle.dump((X_race, y_race), handle)
     else:
         # Load directly from pickled data
         with open(args.train, 'rb') as handle:
