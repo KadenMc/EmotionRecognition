@@ -7,7 +7,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-import dataLoader as dL
 import visualize as vis
 import preprocessing as pre
 import model
@@ -35,11 +34,17 @@ def dir_path(path):
 
 
 def parse_arguments():
+    __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('train', type=path, help='Training data file')
-    parser.add_argument('--config', type=file_path, default='config.yaml', \
+    parser.add_argument('--config', type=file_path, default=__location__ + '/config.yaml', \
         help='YAML config file specifying data paths, training hyperparameters and prediction settings')
     parser.add_argument('--load_weights', type=file_path, help='Load model weights from file')
+
+    parser.add_argument("--remove_similar", action='store_true', \
+        help="Find and remove similar data if true. Must calculate similar images (intensive) if not already saved.")
+
     #parser.add_argument('--save_weights', default=os.path.join(MODEL_PATH, 'model.h5'), \
     #    help='Save model weights to file')
     #parser.add_argument('--history', default=os.path.join(VISUALIZE_PATH, 'history.png'), \
@@ -65,103 +70,109 @@ def load_config(file):
         print('Error reading the config file.')
 
 
-def dataloader():
-    # See torch.utils.data.DataLoader as an example
-
-    #X= Variable(torch.from_numpy(X), requires_grad=False)
-    #X= Variable(torch.from_numpy(X).float(), requires_grad=False)
-    pass
-
 def main():
 
     # Parse the arguments
     args = parse_arguments()
 
-    # Load the data from CSV (and pickle)
+    # Load the data from CSV, process, and pickle
     if args.train.endswith('.csv'):
-        # Process CSV
-        X, y, race = dL.load_csv(args.train)
-
-        X = pre.preprocess(X)
+        # Process data
+        X, y, race = pre.prepare_data(args.train, remove_similar=args.remove_similar)
         
         # Save all data
         with open('../data/Xy.pickle', 'wb') as handle:
-                    pickle.dump((X, y), handle)
+            pickle.dump((X, y), handle)
         
         # Save race-specific data
-        race_data = dL.get_races(X, y, race)
+        race_data = pre.get_races(X, y, race)
+        min_race_length = min([len(race_data[k][0]) for k in race_data if \
+            len(race_data[k][0]) != 0 and k not in ["unknown"]])
+        Xs_equal = []
+        ys_equal = []
         for key in race_data:
             if len(race_data[key][0]) != 0:
-                print(key, ":", len(race_data[key][0])/len(X), "%")
+                print(key, ": ", np.round((len(race_data[key][0])/len(X))*100, 2), "%")
         
+                # Extract and shuffle race data
                 X_race, y_race = race_data[key]
-                random_inds = np.random.choice(len(X_race), size=12, replace=False)
-                vis.visualize_imgs(X_race[random_inds]*255, 200)#, race=race[random_inds])
+                X_race, y_race = pre.shuffle_data(X_race, y_race)
+                
+                # Save a number of random samples equal to the minimum length race dataset
+                equal_inds = np.random.choice(len(X_race), size=min_race_length, replace=False)
+                Xs_equal.append(X_race[equal_inds])
+                ys_equal.append(y_race[equal_inds])
+                
+                # Visualize random samples from each race
+                display_inds = np.random.choice(len(X_race), size=16, replace=False)
+                vis.visualize_imgs(X_race[display_inds]*255)
                 
                 # Save as pickled data
                 with open('../data/Xy_{}.pickle'.format(key), 'wb') as handle:
                     pickle.dump((X_race, y_race), handle)
+
+        # Save equal amount of data from each race (not including unknown)
+        X_equal = np.concatenate(Xs_equal)
+        y_equal = np.concatenate(ys_equal)
+        X_equal, y_equal = pre.shuffle_data(X_equal, y_equal)
+        print("Min race dataset size:", min_race_length)
+        print("Equal dataset size", len(X_equal))
+        
+        with open('../data/Xy_equal.pickle', 'wb') as handle:
+            pickle.dump((X_equal, y_equal), handle)
+    
+    # Train
     else:
-        # Load directly from pickled data
+        # Load from pickled data
         with open(args.train, 'rb') as handle:
             X, y = pickle.load(handle)
 
+        # Load the config
+        config = load_config(args.config)
 
-        # Preprocess & visualize
-        X = pre.preprocess(X)
-        vis.visualize_image(X[0]*255)
-        #vis.visualize_image(X[1])
-        #vis.visualize_image(X[2])
+        # Train
+        # # of outputs = # of unique y values
+        num_outputs = len(np.unique(y))
 
-    # Load the config
-    config = load_config(args.config)
+        m = model.Model(num_outputs)
 
-    exit()
+        # Test model with a random input
+        #import torch
+        #input = torch.randn(1, 1, 32, 32)
+        #out = m(input)
+        #print(out)
 
-    # # of outputs = # of unique y values
-    num_outputs = len(np.unique(y))
+        # TODO:
+        # Define device
+        device = None
 
-    m = model.Model(num_outputs)
+        # Load from config
+        epochs = config["training"]["epochs"]
 
-    # Test model with a random input
-    #import torch
-    #input = torch.randn(1, 1, 32, 32)
-    #out = m(input)
-    #print(out)
+        optimizer = torch.optim.Adam(m.parameters(), lr=4e-2, weight_decay=1e-5)
+        loss_fn = nn.CrossEntropyLoss()
 
-    # TODO:
-    # Create dataloader
-    # Define device
-    dataloader = None
-    device = None
+        for epoch in range(epochs):
+            #avg_cost = 0
+            #total_batch = len(dataloader)
+            
+            #for x, y in dataloader:
+            #    x = x.to(device)
+            #    y = y.to(device)
 
-    # Load from config
-    epochs = config["training"]["epochs"]
+            # Forward pass
+            y_pred = model(X)
 
-    optimizer = torch.optim.Adam(m.parameters(), lr=4e-2, weight_decay=1e-5)
-    loss_fn = nn.CrossEntropyLoss()
+            # Compute loss
+            loss = loss_fn(y_pred, y)
+            print("Epoch {} loss: {}".format(epoch, loss))
 
-    for epoch in range(epochs):
-        #avg_cost = 0
-        #total_batch = len(dataloader)
-        
-        #for x, y in dataloader:
-        #    x = x.to(device)
-        #    y = y.to(device)
+            # Compute gradient/backward pass
+            optimizer.zero_grad()
+            loss.backward()
 
-        # Forward pass
-        y_pred = model(X)
-
-        # Compute loss
-        loss = loss_fn(y_pred, y)
-        print("Epoch {} loss: {}".format(epoch, loss))
-
-        # Compute gradient/backward pass
-        optimizer.zero_grad()
-        loss.backward()
-
-        # Update parameters
-        optimizer.step()
+            # Update parameters
+            optimizer.step()
 
 
 if __name__ == '__main__':
