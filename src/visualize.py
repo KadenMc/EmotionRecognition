@@ -1,24 +1,36 @@
-import os, sys
+from os.path import join
 import numpy as np
+import matplotlib.pyplot as plt
 import cv2
 import imutils
 
-def plot_history(hist, loss_name='loss', path=None):
+def save_image(save_path, key, suffix=None):
     """
-    Plot the training history of a model.
-
-    hist: The training history
+    Saves an image to a given path.
     """
-    import matplotlib.pyplot as plt
-    plt.figure()
-    plt.plot(hist.epoch, hist.history[loss_name], '.-')
-    plt.ylabel('loss')
-    plt.xlabel('epoch')
+    if save_path is not None:
+        if suffix is None:
+            file = join(save_path, key) + '.png'
+        else:
+            file = join(save_path, key) + suffix + '.png'
+        plt.savefig(file)
 
-    if path is None:
-        plt.show()
-    else:
-        plt.savefig(path)
+
+def plot_history(history, save_path=None, suffix=None, alpha=1):
+    """
+    Plots a model training history.
+    """
+    plt.rcParams["figure.figsize"] = (15, 5)
+    
+    for i, key in enumerate(history):
+        plt.figure(i)
+        plt.title(key)
+        plt.plot(range(len(history[key])), history[key], alpha=alpha, color='black', lw=2)
+        save_image(save_path, key, suffix=suffix)
+        
+        if save_path is None:
+            plt.show()
+
 
 def visualize_img(img):
     cv2.namedWindow('visualize')

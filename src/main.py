@@ -1,178 +1,147 @@
+import re
+import sys
 import os
-import argparse
-import yaml
+from os.path import join
 import pickle
-
 import numpy as np
-import torch
-import torch.nn as nn
+from torchvision import transforms
 
+# Import local files
+import argparsing as ap
+import model as m
 import visualize as vis
-import preprocessing as pre
-import model
 
 
-def path(path):
-    if os.path.isdir(path) or os.path.isfile(path):
-        return path
-    else:
-        raise argparse.ArgumentTypeError("{} is not a valid path".format(path))
-
-
-def file_path(path):
-    if os.path.isfile(path):
-        return path
-    else:
-        raise argparse.ArgumentTypeError("{} is not a valid file path".format(path))
-
-
-def dir_path(path):
-    if os.path.isdir(path):
-        return path
-    else:
-        raise argparse.ArgumentTypeError("{} is not a valid directory path".format(path))
-
-
-def parse_arguments():
-    __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
+def stdout_to_file_setup(args):
+    """
+    Sends stdout output to file instead of displaying it on-screen.
+    Helpful for keeping track of hyperparameters and model performance.
+    """
     
-    parser = argparse.ArgumentParser()
-    parser.add_argument('train', type=path, help='Training data file')
-    parser.add_argument('--config', type=file_path, default=__location__ + '/config.yaml', \
-        help='YAML config file specifying data paths, training hyperparameters and prediction settings')
-    parser.add_argument('--load_weights', type=file_path, help='Load model weights from file')
-
-    parser.add_argument("--remove_similar", action='store_true', \
-        help="Find and remove similar data if true. Must calculate similar images (intensive) if not already saved.")
-
-    #parser.add_argument('--save_weights', default=os.path.join(MODEL_PATH, 'model.h5'), \
-    #    help='Save model weights to file')
-    #parser.add_argument('--history', default=os.path.join(VISUALIZE_PATH, 'history.png'), \
-    #    help='Path to save model history')
-    #parser.add_argument("--verbose", type=int, default=2, help="Training verbosity")
-    #parser.add_argument("--predict", action='store_true', \
-    #    help="Predict the data if true, otherwise train by default")
-    #parser.add_argument("--not_parallel", action='store_true', \
-    #    help="If flagged, do not load the data in parallel")
-    #parser.add_argument("--processes", type=int, default=4, \
-    #    help="The number of processes for loading data in parallel")
+    # Find a log number - smallest possible which is 0 and above
+    logs = sorted([f for f in os.listdir(ap.OUTPUT_PATH) if 'log' in f and \
+        os.path.isfile(join(ap.OUTPUT_PATH, f))])
+    if len(logs) == 0:
+        num = 0
+    else:
+        logs = [int(re.findall(r'\d+', l)[0]) for l in logs]
+        logs.sort()
+        found = False
+        for i in range(len(logs)):
+            if i != logs[i]:
+                found = True
+                num = i
+                break
+        
+        if not found:
+            num = len(logs)
     
-    args = parser.parse_args()
-    return args
+    stdout_origin=sys.stdout 
+    sys.stdout = open(join(ap.OUTPUT_PATH, "log{}.txt".format(num)), "w")
+    suffix = str(num)
+    return stdout_origin, suffix
 
 
-def load_config(file):
-    try: 
-        with open (file, 'r') as file:
-            config = yaml.safe_load(file)
-            return config
-    except Exception as e:
-        print('Error reading the config file.')
+def get_tensorboard_path(args, suffix):
+    if args.use_tensorboard:
+        if suffix is not None:
+            path = join(ap.OUTPUT_PATH, 'log{}'.format(suffix))
+        else:
+            path = join(ap.OUTPUT_PATH, 'log')
+    else:
+        path = None
+    return path
+
+
+def get_model_save_path(suffix):
+    if suffix is not None:
+        path = join(ap.MODELS_PATH, 'model{}'.format(suffix))
+    else:
+        path = join(ap.MODELS_PATH, 'model')
+    return path + '.pt'
+
+
+def load_pickled(args):
+    # Load from pickled data
+    with open(args.data, 'rb') as handle:
+        X, y = pickle.load(handle)
+        X = np.expand_dims(X.astype(np.float32), axis=1)
+        y = y.astype(np.float32)
+        return X, y
 
 
 def main():
-
     # Parse the arguments
-    args = parse_arguments()
+    args = ap.main_parse_arguments()
 
-    # Load the data from CSV, process, and pickle
-    if args.train.endswith('.csv'):
-        # Process data
-        X, y, race = pre.prepare_data(args.train, remove_similar=args.remove_similar)
-        
-        # Save all data
-        with open('../data/Xy.pickle', 'wb') as handle:
-            pickle.dump((X, y), handle)
-        
-        # Save race-specific data
-        race_data = pre.get_races(X, y, race)
-        min_race_length = min([len(race_data[k][0]) for k in race_data if \
-            len(race_data[k][0]) != 0 and k not in ["unknown"]])
-        Xs_equal = []
-        ys_equal = []
-        for key in race_data:
-            if len(race_data[key][0]) != 0:
-                print(key, ": ", np.round((len(race_data[key][0])/len(X))*100, 2), "%")
-        
-                # Extract and shuffle race data
-                X_race, y_race = race_data[key]
-                X_race, y_race = pre.shuffle_data(X_race, y_race)
-                
-                # Save a number of random samples equal to the minimum length race dataset
-                equal_inds = np.random.choice(len(X_race), size=min_race_length, replace=False)
-                Xs_equal.append(X_race[equal_inds])
-                ys_equal.append(y_race[equal_inds])
-                
-                # Visualize random samples from each race
-                display_inds = np.random.choice(len(X_race), size=16, replace=False)
-                vis.visualize_imgs(X_race[display_inds]*255)
-                
-                # Save as pickled data
-                with open('../data/Xy_{}.pickle'.format(key), 'wb') as handle:
-                    pickle.dump((X_race, y_race), handle)
+    # Assert that the file being loaded isn't a CSV file
+    if args.data.endswith('.csv'):
+        print("Please preprocess the CSV first. See README for details.")
+        exit()
+    
+    # Setup logging stdout to file
+    if args.stdout_to_file:
+        stdout_origin, suffix = stdout_to_file_setup(args)
+    else:
+        suffix = None
 
-        # Save equal amount of data from each race (not including unknown)
-        X_equal = np.concatenate(Xs_equal)
-        y_equal = np.concatenate(ys_equal)
-        X_equal, y_equal = pre.shuffle_data(X_equal, y_equal)
-        print("Min race dataset size:", min_race_length)
-        print("Equal dataset size", len(X_equal))
+    # Load and prepare the data
+    X, y = load_pickled(args)
+
+    print(X.shape)
+    print(y.shape)
+
+    # Put data into PyTorch DataLoaders
+    transform = transforms.Compose([
+        #transforms.Grayscale(), # Convert to grayscale
+        #transforms.ToTensor(), # Make into PyTorch tensor
+        transforms.Normalize((0.5,), (0.5,)), # Normalization
+    ])
+    from dataloader import prepare_dataloaders
+    train_loader, val_loader, test_loader = prepare_dataloaders(X, y, args, transform=transform)
+
+    # Define the model
+    n_outputs = len(np.unique(y))
+    print("n_outputs", n_outputs)
+    model = m.Model(n_outputs, args)
+    
+    # Define device - Use GPU if possible
+    device = m.get_device()
+
+
+    print("test_loader", test_loader.dataset.dataset.data)
+    print("test_loader", test_loader.dataset.dataset.targets)
+
+    # Predict    
+    if args.predict:
+        assert args.model_path is not None
+        loss, accuracy = model.predict(args.model_path, test_loader, device)
         
-        with open('../data/Xy_equal.pickle', 'wb') as handle:
-            pickle.dump((X_equal, y_equal), handle)
+        print(test_loader.dataset)
+        print("Test loss:", loss)
+        print("Test accuracy:", accuracy)
+    
+        #from sklearn.metrics import confusion_matrix
+        #import seaborn as sns
+        #cf_matrix = confusion_matrix(y_true, y_pred, labels=["ant", "bird", "cat"])
+        #sns.heatmap(cf_matrix, annot=True)
     
     # Train
     else:
-        # Load from pickled data
-        with open(args.train, 'rb') as handle:
-            X, y = pickle.load(handle)
+        
+        tensorboard_path = get_tensorboard_path(args, suffix)
+        model_save_path = get_model_save_path(suffix)
+        
+        # Train the model
+        history = m.train(train_loader, val_loader, model, device, args, \
+            tensorboard_path=tensorboard_path, model_save_path=model_save_path)
 
-        # Load the config
-        config = load_config(args.config)
+        vis.plot_history(history)
 
-        # Train
-        # # of outputs = # of unique y values
-        num_outputs = len(np.unique(y))
-
-        m = model.Model(num_outputs)
-
-        # Test model with a random input
-        #import torch
-        #input = torch.randn(1, 1, 32, 32)
-        #out = m(input)
-        #print(out)
-
-        # TODO:
-        # Define device
-        device = None
-
-        # Load from config
-        epochs = config["training"]["epochs"]
-
-        optimizer = torch.optim.Adam(m.parameters(), lr=4e-2, weight_decay=1e-5)
-        loss_fn = nn.CrossEntropyLoss()
-
-        for epoch in range(epochs):
-            #avg_cost = 0
-            #total_batch = len(dataloader)
-            
-            #for x, y in dataloader:
-            #    x = x.to(device)
-            #    y = y.to(device)
-
-            # Forward pass
-            y_pred = model(X)
-
-            # Compute loss
-            loss = loss_fn(y_pred, y)
-            print("Epoch {} loss: {}".format(epoch, loss))
-
-            # Compute gradient/backward pass
-            optimizer.zero_grad()
-            loss.backward()
-
-            # Update parameters
-            optimizer.step()
+    # Close the stdout pipe if stdout was being sent to a file
+    if args.stdout_to_file:
+        sys.stdout.close()
+        sys.stdout=stdout_origin
 
 
 if __name__ == '__main__':

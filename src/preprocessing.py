@@ -1,19 +1,14 @@
+import os.path
+import pickle
+import pandas as pd
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
-import pandas as pd
-import pickle
-import cv2
-
-import sys
-
-import os.path
-
 from scipy.ndimage import generic_filter
-
 from skimage.metrics import structural_similarity as compare_ssim
-
 from sklearn.utils import shuffle
 
+# Import local files
+import argparsing as ap
 import visualize as vis
 
 def convolution(input, kernel):
@@ -281,3 +276,62 @@ def prepare_data(file, size=(48, 48), remove_similar=False):
     X = preprocess_X(X)
     
     return X, y, race
+
+def preprocess_csv(args):
+    """
+    Load the data from CSV, process, and pickle
+    """
+    # Process data
+    X, y, race = prepare_data(args.train, remove_similar=args.remove_similar)
+    
+    # Save all data
+    with open('../data/Xy.pickle', 'wb') as handle:
+        pickle.dump((X, y), handle)
+    
+    # Save race-specific data
+    race_data = get_races(X, y, race)
+    min_race_length = min([len(race_data[k][0]) for k in race_data if \
+        len(race_data[k][0]) != 0 and k not in ["unknown"]])
+    Xs_equal = []
+    ys_equal = []
+    for key in race_data:
+        if len(race_data[key][0]) != 0:
+            print(key, ": ", np.round((len(race_data[key][0])/len(X))*100, 2), "%")
+    
+            # Extract and shuffle race data
+            X_race, y_race = race_data[key]
+            X_race, y_race = shuffle_data(X_race, y_race)
+            
+            # Save a number of random samples equal to the minimum length race dataset
+            equal_inds = np.random.choice(len(X_race), size=min_race_length, replace=False)
+            Xs_equal.append(X_race[equal_inds])
+            ys_equal.append(y_race[equal_inds])
+            
+            # Visualize random samples from each race
+            display_inds = np.random.choice(len(X_race), size=16, replace=False)
+
+            if args.visualize:
+                vis.visualize_imgs(X_race[display_inds]*255)
+            
+            # Save as pickled data
+            with open('../data/Xy_{}.pickle'.format(key), 'wb') as handle:
+                pickle.dump((X_race, y_race), handle)
+
+    # Save equal amount of data from each race (not including unknown)
+    X_equal = np.concatenate(Xs_equal)
+    y_equal = np.concatenate(ys_equal)
+    X_equal, y_equal = shuffle_data(X_equal, y_equal)
+    print("Min race dataset size:", min_race_length)
+    print("Equal dataset size", len(X_equal))
+    
+    with open('../data/Xy_equal.pickle', 'wb') as handle:
+        pickle.dump((X_equal, y_equal), handle)
+
+
+
+def main():
+    args = ap.preprocessing_parse_arguments()
+
+
+if __name__ == "__main__":
+    main()
