@@ -139,6 +139,11 @@ class Model(nn.Module):
         # Perform the forward pass
         return self.model(x)
 
+    def infer(self, loader, device):
+        X = loader.dataset.dataset.data
+        y = loader.dataset.dataset.targets
+        X, y = X.to(device), y.to(device)
+        return self.forward(X)
 
     def get_loss(self, loader, device):
         """
@@ -169,8 +174,6 @@ def train(train_loader, val_loader, model, device, args, tensorboard_path=None, 
     if tensorboard_path is not None:
         from torch.utils.tensorboard import SummaryWriter
         writer = SummaryWriter(tensorboard_path)
-    
-    model.to(device)
 
     train_losses = []
     val_losses = []

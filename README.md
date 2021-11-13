@@ -15,7 +15,6 @@ python main.py ../data/Xy.pickle --epochs 100 --lr 0.003 --lr_decay_gamma 0.98 -
 ```
 *Note: The output will be sent to a log file in the output directory*
 
-
 Then, in a Jupyter notebook,
 ```
 !pip install tensorboard
@@ -23,6 +22,12 @@ Then, in a Jupyter notebook,
 ```
 %reload_ext tensorboard
 %tensorboard --logdir=".../EmotionRecognition/outputs/log0/" --reload_multifile True
+```
+
+Terminal inference command:
+
+```
+python main.py ../data/Xy.pickle  --predict --model_path ../models/model.pt
 ```
 
 ## Argument Parsing

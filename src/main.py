@@ -88,8 +88,8 @@ def main():
     # Load and prepare the data
     X, y = load_pickled(args)
 
-    print(X.shape)
-    print(y.shape)
+    print("Data shape:", X.shape)
+    print("Targets shape:", y.shape)
 
     # Put data into PyTorch DataLoaders
     transform = transforms.Compose([
@@ -100,31 +100,41 @@ def main():
     from dataloader import prepare_dataloaders
     train_loader, val_loader, test_loader = prepare_dataloaders(X, y, args, transform=transform)
 
+    # Define device - Use GPU if possible
+    device = m.get_device()
+
     # Define the model
     n_outputs = len(np.unique(y))
     print("n_outputs", n_outputs)
     model = m.Model(n_outputs, args)
-    
-    # Define device - Use GPU if possible
-    device = m.get_device()
-
-
-    print("test_loader", test_loader.dataset.dataset.data)
-    print("test_loader", test_loader.dataset.dataset.targets)
+    model.to(device)
 
     # Predict    
     if args.predict:
         assert args.model_path is not None
-        loss, accuracy = model.predict(args.model_path, test_loader, device)
+        y = test_loader.dataset.dataset.targets
+        y_pred = model.infer(test_loader, device)
         
-        print(test_loader.dataset)
+        loss = model.loss_fn(y_pred, y).item()
+        top_p, top_class = y_pred.topk(1, dim=1)
+        equals = top_class == y.view(*top_class.shape)
+        
+        import torch
+        accuracy = torch.mean(equals.type(torch.FloatTensor)).item()
+        
         print("Test loss:", loss)
         print("Test accuracy:", accuracy)
-    
-        #from sklearn.metrics import confusion_matrix
-        #import seaborn as sns
-        #cf_matrix = confusion_matrix(y_true, y_pred, labels=["ant", "bird", "cat"])
-        #sns.heatmap(cf_matrix, annot=True)
+        
+        y = y.detach().numpy()
+        y_pred = y_pred.detach().numpy()
+        y_pred = np.argmax(y_pred, axis=1)
+        
+        from sklearn.metrics import confusion_matrix
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        cf_matrix = confusion_matrix(y, y_pred)#, labels=["ant", "bird", "cat"])
+        sns.heatmap(cf_matrix, annot=True)
+        plt.show()
     
     # Train
     else:
